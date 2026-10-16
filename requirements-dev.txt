@@ -1,0 +1,2 @@
+-r desktop/requirements.txt
+playwright>=1.50,<2

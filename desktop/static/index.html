@@ -1,0 +1,212 @@
+<!doctype html>
+<!-- 功能：STM32 水质控制工作台，固定表单节点、独立计划、只读灯态与设备确认记录。 -->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>水质控制工作台 · STM32</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳转到工作台</a>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="brand-mark"><svg aria-hidden="true"><use href="/static/icons.svg#droplet"></use></svg></span>
+        <div><h1>水质控制工作台</h1><p>STM32 <span class="separator">/</span> <span id="device-id">等待设备标识</span></p></div>
+      </div>
+      <div class="header-actions">
+        <span class="badge" id="mqtt-status" data-tone="neutral"><span class="status-dot"></span>MQTT 未知</span>
+        <button class="icon-button" type="button" id="refresh-status" title="刷新状态" aria-label="刷新状态">
+          <svg aria-hidden="true"><use href="/static/icons.svg#refresh-cw"></use></svg>
+        </button>
+        <button class="button button-danger" type="button" data-action="stop" data-send disabled>全部停止</button>
+      </div>
+    </div>
+    <nav class="section-nav" aria-label="工作台导航">
+      <a href="#overview">实时水质</a><a href="#collection">采集设置</a><a href="#mechanical">机械控制</a><a href="#cleaning">完整清洗</a><a href="#records">记录与历史</a>
+    </nav>
+  </header>
+
+  <main id="main" class="workspace">
+    <section id="overview" aria-labelledby="overview-title">
+      <div class="connection-strip">
+        <div class="connection-text">
+          <h2 id="overview-title"><span class="status-dot" id="device-dot"></span><span id="device-status">等待设备状态</span></h2>
+          <p id="connection-detail">正在读取服务状态</p>
+        </div>
+        <div class="lamp-panel" aria-label="设备三色灯，只读">
+          <span class="minor-label">设备指示灯</span>
+          <div class="lamps">
+            <span class="lamp-item" id="light-red" data-lit="false"><span class="lamp lamp-red"></span>红</span>
+            <span class="lamp-item" id="light-yellow" data-lit="false"><span class="lamp lamp-yellow"></span>黄</span>
+            <span class="lamp-item" id="light-green" data-lit="false"><span class="lamp lamp-green"></span>绿</span>
+          </div>
+          <span class="lamp-caption" id="light-label">灯态未知</span>
+        </div>
+      </div>
+      <div class="section-heading compact-heading">
+        <h2>实时水质</h2><span class="meta" id="water-updated">尚未收到水质数据</span>
+      </div>
+      <div class="metrics">
+        <article class="metric metric-teal">
+          <div class="metric-top"><h3>酸碱度</h3><span class="metric-symbol">pH</span></div>
+          <div class="metric-value"><span id="metric-ph">--</span><span class="unit">pH</span></div>
+          <div class="metric-bottom">酸碱度 <span>pH</span></div>
+        </article>
+        <article class="metric metric-blue">
+          <div class="metric-top"><h3>溶解氧</h3><svg aria-hidden="true"><use href="/static/icons.svg#droplet"></use></svg></div>
+          <div class="metric-value"><span id="metric-doMgL">--</span><span class="unit">mg/L</span></div>
+          <div class="metric-bottom">溶解氧浓度 <span>DO</span></div>
+        </article>
+        <article class="metric metric-green">
+          <div class="metric-top"><h3>水温</h3><svg aria-hidden="true"><use href="/static/icons.svg#thermometer"></use></svg></div>
+          <div class="metric-value"><span id="metric-waterTemp">--</span><span class="unit">°C</span></div>
+          <div class="metric-bottom">水体温度 <span>TEMP</span></div>
+        </article>
+        <article class="metric metric-gray">
+          <div class="metric-top"><h3>氧饱和度</h3><span class="metric-symbol">%</span></div>
+          <div class="metric-value"><span id="metric-doSaturation">--</span><span class="unit">%</span></div>
+          <div class="metric-bottom">溶解氧饱和度 <span>SAT</span></div>
+        </article>
+      </div>
+      <p id="global-feedback" class="global-feedback" data-state="uninitialized" role="status" aria-live="polite">控制尚未就绪</p>
+    </section>
+
+    <section id="collection" class="work-section" aria-labelledby="collection-title">
+      <div class="section-heading"><div><p class="section-index">01 / COLLECTION</p><h2 id="collection-title">采集与工作模式</h2></div><span class="badge" id="collection-state">采集状态未知</span></div>
+      <div class="collection-grid">
+        <form id="sampling-form" class="settings-form" novalidate>
+          <div class="form-heading"><h3>采集设置</h3><span class="form-state" data-feedback data-state="uninitialized" role="status">等待设备配置</span></div>
+          <div class="field-grid sampling-fields">
+            <label class="field"><span>采集方式</span><select name="mode"><option value="run">持续采集</option><option value="pause">暂停采集</option><option value="schedule">定时采集</option></select></label>
+            <label class="field"><span>采样周期 <small>秒</small></span><input name="sample" type="number" min="2" max="3600" step="1" value="5" inputmode="numeric"><span class="field-note">2–3600 秒</span></label>
+            <label class="field"><span>发布周期 <small>秒</small></span><input name="publish" type="number" min="5" max="86400" step="1" value="3600" inputmode="numeric"><span class="field-note">5–86400 秒</span></label>
+            <div class="field"><label for="sampling-start">开始时间 <small>北京时间</small></label><div class="time-field"><input id="sampling-start" name="start" type="text" value="08:00" maxlength="5" inputmode="numeric" placeholder="HH:mm" autocomplete="off" aria-label="采集开始时间"><button class="icon-button" type="button" data-time-for="sampling-start" title="选择采集开始时间" aria-label="选择采集开始时间"><svg aria-hidden="true"><use href="/static/icons.svg#clock"></use></svg></button></div></div>
+            <div class="field"><label for="sampling-end">结束时间 <small>北京时间</small></label><div class="time-field"><input id="sampling-end" name="end" type="text" value="18:00" maxlength="5" inputmode="numeric" placeholder="HH:mm" autocomplete="off" aria-label="采集结束时间"><button class="icon-button" type="button" data-time-for="sampling-end" title="选择采集结束时间" aria-label="选择采集结束时间"><svg aria-hidden="true"><use href="/static/icons.svg#clock"></use></svg></button></div></div>
+          </div>
+          <p class="form-note" id="sampling-note">采样与发布周期独立；定时窗口采用北京时间，可跨午夜。</p>
+          <div class="form-footer"><button class="button button-primary" type="submit" data-send disabled>应用采集设置</button><span class="meta" id="collection-applied">设备设置未知</span></div>
+        </form>
+        <form id="mode-form" class="settings-form mode-form" novalidate>
+          <div class="form-heading"><h3>机械工作模式</h3><span class="form-state" data-feedback data-state="uninitialized" role="status">等待设备配置</span></div>
+          <label class="field"><span>目标模式</span><select name="mode"><option value="manual">手动</option><option value="auto">自动</option></select></label>
+          <dl class="mode-description"><div><dt>手动</dt><dd>手动启动机械；自动机械计划暂停。</dd></div><div><dt>自动</dt><dd>设备执行已应用的机械计划与清洗配置。</dd></div></dl>
+          <div class="mode-current"><span>设备当前模式</span><strong id="mode-current">未知</strong><span id="clock-state">校时未知</span></div>
+          <div class="form-footer"><button class="button button-primary" type="submit" data-send disabled>应用模式</button></div>
+          <p class="form-note">切换模式会停止机械并取消当前自动清洗。</p>
+        </form>
+      </div>
+    </section>
+
+    <section id="mechanical" class="work-section" aria-labelledby="mechanical-title">
+      <div class="section-heading"><div><p class="section-index">02 / ACTUATORS</p><h2 id="mechanical-title">机械控制</h2></div><span class="meta">状态为设备软件输出，非转速或位置实测</span></div>
+      <div class="machine-grid">
+        <article class="machine">
+          <div class="machine-heading"><h3>毛刷</h3><span class="badge" id="brush-state">未知</span></div>
+          <div class="machine-summary"><span>剩余运行时间</span><strong id="brush-remaining">--</strong></div>
+          <form id="brush-action-form" class="action-form" novalidate>
+            <label class="field duration-field"><span>运行时长 <small>秒</small></span><input name="duration" type="number" min="1" max="30" step="1" value="10" inputmode="numeric"></label>
+            <div class="action-buttons"><button class="button button-primary" type="button" data-action="brush-start" data-send data-manual disabled>启动毛刷</button><button class="button button-stop" type="button" data-action="brush-stop" data-send disabled>停止</button></div>
+            <p class="form-state action-feedback" data-feedback data-state="uninitialized" role="status">单次运行 1–30 秒</p>
+          </form>
+          <form id="brush-plan-form" class="plan-form" novalidate>
+            <div class="form-heading"><h4>毛刷计划</h4><span class="form-state" data-feedback data-state="uninitialized" role="status">等待设备配置</span></div>
+            <div class="field-grid">
+              <label class="field"><span>计划方式</span><select name="type"><option value="off">关闭计划</option><option value="daily">每天</option><option value="interval">按间隔</option></select></label>
+              <div class="field"><label for="brush-plan-start">每天时间 <small>北京时间</small></label><div class="time-field"><input id="brush-plan-start" name="start" type="text" value="08:00" maxlength="5" inputmode="numeric" placeholder="HH:mm" autocomplete="off"><button class="icon-button" type="button" data-time-for="brush-plan-start" title="选择毛刷计划时间" aria-label="选择毛刷计划时间"><svg aria-hidden="true"><use href="/static/icons.svg#clock"></use></svg></button></div></div>
+              <label class="field"><span>计划间隔 <small>秒</small></span><input name="interval" type="number" min="60" max="86400" step="1" value="21600" inputmode="numeric"></label>
+              <label class="field"><span>运行时长 <small>秒</small></span><input name="duration" type="number" min="1" max="30" step="1" value="10" inputmode="numeric"></label>
+            </div>
+            <input name="action" type="hidden" value="start">
+            <div class="form-footer"><button class="button button-secondary" type="submit" data-send disabled>应用毛刷计划</button></div>
+            <p class="form-note" id="brush-plan-applied">设备计划未知</p>
+          </form>
+        </article>
+        <article class="machine">
+          <div class="machine-heading"><h3>推杆</h3><span class="badge" id="actuator-state">未知</span></div>
+          <div class="machine-summary"><span>剩余运行时间</span><strong id="actuator-remaining">--</strong></div>
+          <form id="actuator-action-form" class="action-form" novalidate>
+            <label class="field duration-field"><span>运行时长 <small>秒</small></span><input name="duration" type="number" min="1" max="30" step="1" value="12" inputmode="numeric"></label>
+            <!-- 方向对调后，页面伸出发送 retract，缩回发送 extend；停止仍使用 stop。 -->
+            <div class="action-buttons"><button class="button button-primary" type="button" data-action="actuator-retract" data-send data-manual disabled>伸出</button><button class="button button-secondary" type="button" data-action="actuator-extend" data-send data-manual disabled>缩回</button><button class="button button-stop" type="button" data-action="actuator-stop" data-send disabled>停止</button></div>
+            <p class="form-state action-feedback" data-feedback data-state="uninitialized" role="status">单次运行 1–30 秒</p>
+          </form>
+          <form id="actuator-plan-form" class="plan-form" novalidate>
+            <div class="form-heading"><h4>推杆计划</h4><span class="form-state" data-feedback data-state="uninitialized" role="status">等待设备配置</span></div>
+            <div class="field-grid">
+              <label class="field"><span>计划方式</span><select name="type"><option value="off">关闭计划</option><option value="daily">每天</option><option value="interval">按间隔</option></select></label>
+              <div class="field"><label for="actuator-plan-start">每天时间 <small>北京时间</small></label><div class="time-field"><input id="actuator-plan-start" name="start" type="text" value="08:00" maxlength="5" inputmode="numeric" placeholder="HH:mm" autocomplete="off"><button class="icon-button" type="button" data-time-for="actuator-plan-start" title="选择推杆计划时间" aria-label="选择推杆计划时间"><svg aria-hidden="true"><use href="/static/icons.svg#clock"></use></svg></button></div></div>
+              <label class="field"><span>计划间隔 <small>秒</small></span><input name="interval" type="number" min="60" max="86400" step="1" value="21600" inputmode="numeric"></label>
+              <label class="field"><span>运行时长 <small>秒</small></span><input name="duration" type="number" min="1" max="30" step="1" value="12" inputmode="numeric"></label>
+              <label class="field"><span>计划动作</span><select name="action"><option value="retract">伸出</option><option value="extend">缩回</option></select></label>
+            </div>
+            <div class="form-footer"><button class="button button-secondary" type="submit" data-send disabled>应用推杆计划</button></div>
+            <p class="form-note" id="actuator-plan-applied">设备计划未知</p>
+          </form>
+        </article>
+      </div>
+      <p class="section-note">计划在设备端执行；关闭本页面不影响已应用计划。手动模式不执行自动机械计划。</p>
+    </section>
+
+    <section id="cleaning" class="work-section" aria-labelledby="cleaning-title">
+      <div class="section-heading"><div><p class="section-index">03 / CLEANING</p><h2 id="cleaning-title">完整清洗</h2></div><span class="badge" id="cleaning-state">清洗状态未知</span></div>
+      <div class="cleaning-strip">
+        <ol class="cleaning-steps" aria-label="清洗流程"><li data-cleaning-step="extending"><span>1</span>缩回</li><li data-cleaning-step="brushing"><span>2</span>刷洗</li><li data-cleaning-step="retracting"><span>3</span>伸出</li><li data-cleaning-step="settling"><span>4</span>静置</li></ol>
+        <div class="next-cleaning"><span>距离下次清洗</span><strong id="cleaning-next">--</strong></div>
+      </div>
+      <div class="cleaning-grid">
+        <form id="cleaning-form" class="settings-form" novalidate>
+          <div class="form-heading"><h3>清洗配置</h3><span class="form-state" data-feedback data-state="uninitialized" role="status">等待设备配置</span></div>
+          <label class="toggle-field"><input name="enabled" type="checkbox" checked><span>启用自动周期清洗</span></label>
+          <div class="field-grid cleaning-fields">
+            <label class="field"><span>清洗间隔 <small>秒</small></span><input name="interval" type="number" min="60" max="604800" step="1" value="21600" inputmode="numeric"><span class="field-note">60–604800 秒</span></label>
+            <label class="field"><span>缩回时长 <small>秒</small></span><input name="extend" type="number" min="1" max="30" step="1" value="12" inputmode="numeric"></label>
+            <label class="field"><span>刷洗时长 <small>秒</small></span><input name="brush" type="number" min="1" max="30" step="1" value="10" inputmode="numeric"></label>
+            <label class="field"><span>伸出时长 <small>秒</small></span><input name="retract" type="number" min="1" max="30" step="1" value="12" inputmode="numeric"></label>
+            <label class="field"><span>静置时间 <small>秒</small></span><input name="settle" type="number" min="0" max="600" step="1" value="30" inputmode="numeric"></label>
+          </div>
+          <div class="form-footer"><button class="button button-primary" type="submit" data-send disabled>应用清洗配置</button><span class="meta" id="cleaning-applied">设备配置未知</span></div>
+        </form>
+        <form id="cleaning-action-form" class="cleaning-action-form" novalidate>
+          <h3>清洗操作</h3>
+          <p class="form-note">自动模式且设备空闲时可开始。清洗期间暂停传感器读取，传感器电源保持开启。</p>
+          <div class="action-buttons"><button class="button button-primary" type="button" data-action="cleaning-start" data-send data-auto disabled>开始清洗</button><button class="button button-stop" type="button" data-action="cleaning-stop" data-send disabled>停止清洗</button></div>
+          <p class="form-state action-feedback" data-feedback data-state="uninitialized" role="status">尚无清洗命令</p>
+          <p class="form-note">停止清洗会停止机械并暂停自动机械模式。</p>
+        </form>
+      </div>
+    </section>
+
+    <section id="records" class="work-section" aria-labelledby="records-title">
+      <div class="section-heading"><div><p class="section-index">04 / LOGS</p><h2 id="records-title">命令与历史</h2></div><button class="button button-secondary" type="button" data-action="query" data-send disabled>查询设备</button></div>
+      <div class="subsection-heading"><h3>最近命令</h3><span class="meta">以设备回执为准</span></div>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="最近命令记录">
+        <table class="command-table"><thead><tr><th scope="col">请求时间</th><th scope="col">操作 / 命令 ID</th><th scope="col">结果</th><th scope="col">反馈</th></tr></thead><tbody id="command-body"><tr class="empty-row"><td colspan="4">暂无命令记录</td></tr></tbody></table>
+      </div>
+      <div class="subsection-heading history-heading"><div><h3>水质历史</h3><p id="history-meta" class="meta">最近 200 条</p></div><div class="history-actions"><button class="icon-button" type="button" id="refresh-history" title="刷新水质历史" aria-label="刷新水质历史"><svg aria-hidden="true"><use href="/static/icons.svg#refresh-cw"></use></svg></button><a class="button button-secondary" id="export-link" href="/api/export.csv" download><svg aria-hidden="true"><use href="/static/icons.svg#download"></use></svg>导出 CSV</a></div></div>
+      <p id="history-feedback" class="form-state" role="status"></p>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="水质历史记录">
+        <table class="history-table"><thead><tr><th scope="col">北京时间</th><th scope="col">pH</th><th scope="col">溶解氧 <small>mg/L</small></th><th scope="col">水温 <small>°C</small></th><th scope="col">饱和度 <small>%</small></th><th scope="col">来源</th></tr></thead><tbody id="history-body"><tr class="empty-row"><td colspan="6">等待加载历史记录</td></tr></tbody></table>
+      </div>
+    </section>
+    <footer class="workspace-footer"><span>STM32 水质控制</span><span id="server-updated">服务时间未知</span></footer>
+  </main>
+
+  <dialog id="time-modal" class="time-modal" hidden aria-labelledby="time-title">
+    <div class="modal-heading"><h2 id="time-title">选择时间</h2><span class="meta">北京时间 · 24 小时</span></div>
+    <div class="time-wheels">
+      <div class="wheel-column"><span class="wheel-label">时</span><div id="hour-wheel" class="time-wheel" role="listbox" aria-label="小时" tabindex="0"><div class="wheel-options"></div></div></div>
+      <span class="time-colon" aria-hidden="true">:</span>
+      <div class="wheel-column"><span class="wheel-label">分</span><div id="minute-wheel" class="time-wheel" role="listbox" aria-label="分钟" tabindex="0"><div class="wheel-options"></div></div></div>
+    </div>
+    <div class="time-direct"><label class="field"><span>小时</span><input id="time-hour" type="number" min="0" max="23" step="1" inputmode="numeric" value="8"></label><span aria-hidden="true">:</span><label class="field"><span>分钟</span><input id="time-minute" type="number" min="0" max="59" step="1" inputmode="numeric" value="0"></label></div>
+    <p id="time-error" class="form-state" role="status"></p>
+    <div class="modal-actions"><button id="time-cancel" class="button button-secondary" type="button">取消</button><button id="time-confirm" class="button button-primary" type="button">确认时间</button></div>
+  </dialog>
+  <noscript><p class="noscript-note">请启用 JavaScript 以读取状态和发送控制命令。</p></noscript>
+</body>
+</html>
